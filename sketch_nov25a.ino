@@ -56,5 +56,3 @@ void loop() {
     led3On = false;
   }
 }
-
-}
