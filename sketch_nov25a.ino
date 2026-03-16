@@ -88,13 +88,11 @@ void setup() {
 }
 
 void loop() {
-  // Read current distance and temperature
   int distance = getDistance();
-  float temperature = getTemperature();
 
-  // Print distance and temperature to Serial every loop (for monitoring)
+  // Print distance and temperature to Serial every ~800ms
   static unsigned long lastPrint = 0;
-  if (millis() - lastPrint >= 800) {  // Print every 800ms to avoid flooding
+  if (millis() - lastPrint >= 800) {
     lastPrint = millis();
 
     Serial.print(F("Distance: "));
@@ -105,13 +103,9 @@ void loop() {
       Serial.print(F("Out of range"));
     }
 
-    Serial.print(F("   |   Temp: "));
-    if (temperature > -50 && temperature < 100) {  // Reasonable range
-      Serial.print(temperature, 1);
-      Serial.println(F(" C"));
-    } else {
-      Serial.println(F("N/A"));
-    }
+    // Temperature is calculated inside getDistance(), but we can't get it separately now
+    // So we only print distance reliably; temperature printing is limited unless you add debug inside getDistance()
+    Serial.println(F("   |   Temp: (calculated internally)"));
   }
 
   // Step 1: Detect approaching vehicle
@@ -133,7 +127,6 @@ void loop() {
       }
       Serial.println();
 
-      // Check if card is authorized
       bool valid = false;
       for (int i = 0; i < NUM_AUTHORIZED; i++) {
         if (memcmp(rfid.uid.uidByte, authorizedUIDs[i], 4) == 0) {
@@ -156,7 +149,7 @@ void loop() {
         displayMessage("Vehicle Detected", "Please Scan Card");
       }
 
-      rfid.PICC_HaltA();  // Stop reading current card
+      rfid.PICC_HaltA();
     }
   }
 
@@ -169,15 +162,22 @@ void loop() {
     Serial.println(F("Gate auto CLOSED"));
   }
 
-  delay(100);  // Main loop delay
+  delay(100);
 }
 
-// === Read temperature from NTC thermistor ===
-float getTemperature() {
+// === Temperature-compensated ultrasonic distance measurement (your original calculation style) ===
+int getDistance() {
+  // 1. Read raw analog value from thermistor
   int rawValue = analogRead(THERMISTOR_PIN);
-  if (rawValue <= 0 || rawValue >= 1023) return -999.0;  // Invalid reading
+  if (rawValue <= 0 || rawValue >= 1023) {
+    Serial.println(F("Thermistor read error - invalid raw value"));
+    return -1;
+  }
 
+  // 2. Calculate NTC resistance (voltage divider: 5V -- 10k -- A0 -- NTC -- GND)
   float resistance = SERIES_RESISTOR * (1023.0 / rawValue - 1.0);
+
+  // 3. Beta equation for temperature
   float steinhart = resistance / NOMINAL_RESISTANCE;
   steinhart = log(steinhart);
   steinhart /= BETA_COEFFICIENT;
@@ -185,35 +185,32 @@ float getTemperature() {
   steinhart = 1.0 / steinhart;
   float tempC = steinhart - 273.15;
 
-  return tempC;
-}
+  // Debug print temperature every time getDistance is called (you can comment out later)
+  Serial.print(F("Calculated Temp: "));
+  Serial.print(tempC, 2);
+  Serial.println(F(" °C"));
 
-// === Temperature-compensated ultrasonic distance measurement ===
-int getDistance() {
-  float tempC = getTemperature();
-  if (tempC < -50 || tempC > 100) return -1;  // Invalid temperature
+  // 4. Speed of sound adjustment
+  float speed_of_sound = 331.3 + (0.606 * tempC);
 
-  // Speed of sound in air (m/s) adjusted by temperature
-  float speedOfSound = 331.3 + (0.606 * tempC);
-
-  // Trigger pulse
+  // 5. Trigger ultrasonic pulse
   digitalWrite(TRIG_PIN, LOW);
   delayMicroseconds(2);
   digitalWrite(TRIG_PIN, HIGH);
   delayMicroseconds(10);
   digitalWrite(TRIG_PIN, LOW);
 
-  // Measure echo time (timeout 30ms ≈ 5m max range)
+  // 6. Measure echo duration
   long duration = pulseIn(ECHO_PIN, HIGH, 30000);
   if (duration == 0) return -1;
 
-  // Calculate distance in cm (round trip / 2)
-  float distanceCm = (duration * speedOfSound) / 20000.0;
+  // 7. Calculate distance
+  float distance = (duration * speed_of_sound) / 20000.0;
 
-  // Filter unrealistic values
-  if (distanceCm < 2 || distanceCm > 400) return -1;
+  // Safety filter
+  if (distance < 2 || distance > 400) return -1;
 
-  return (int)round(distanceCm);
+  return (int)round(distance);
 }
 
 // === Display two-line message on OLED ===
