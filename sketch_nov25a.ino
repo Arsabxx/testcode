@@ -1,76 +1,91 @@
-#include <SPI.h>
-#include <MFRC522.h>
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:26:1: error: 'Servo' does not name a type
+ Servo barrier;
+ ^~~~~
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:27:1: error: 'MFRC522' does not name a type
+ MFRC522 rfid(SS_PIN, RST_PIN);
+ ^~~~~~~
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:28:1: error: 'U8G2_SSD1306_128X64_NONAME_F_HW_I2C' does not name a type
+ U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE);  // OLED I2C (SSD1306 128x64)
+ ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino: In function 'void setup()':
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:39:11: error: 'LED_PIN' was not declared in this scope
+   pinMode(LED_PIN, OUTPUT);
+           ^~~~~~~
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:39:11: note: suggested alternative: 'RST_PIN'
+   pinMode(LED_PIN, OUTPUT);
+           ^~~~~~~
+           RST_PIN
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:42:3: error: 'barrier' was not declared in this scope
+   barrier.attach(SERVO_PIN);
+   ^~~~~~~
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:45:3: error: 'SPI' was not declared in this scope
+   SPI.begin();
+   ^~~
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:45:3: note: suggested alternative: 'PI'
+   SPI.begin();
+   ^~~
+   PI
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:46:3: error: 'rfid' was not declared in this scope
+   rfid.PCD_Init();             // Initialize MFRC522
+   ^~~~
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:46:3: note: suggested alternative: 'rand'
+   rfid.PCD_Init();             // Initialize MFRC522
+   ^~~~
+   rand
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:48:3: error: 'u8g2' was not declared in this scope
+   u8g2.begin();
+   ^~~~
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:48:3: note: suggested alternative: 'log2'
+   u8g2.begin();
+   ^~~~
+   log2
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino: In function 'void loop()':
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:59:18: error: 'LED_PIN' was not declared in this scope
+     digitalWrite(LED_PIN, HIGH);                // Turn on LED to indicate "scan card"
+                  ^~~~~~~
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:59:18: note: suggested alternative: 'RST_PIN'
+     digitalWrite(LED_PIN, HIGH);                // Turn on LED to indicate "scan card"
+                  ^~~~~~~
+                  RST_PIN
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:66:9: error: 'rfid' was not declared in this scope
+     if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
+         ^~~~
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:66:9: note: suggested alternative: 'rand'
+     if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
+         ^~~~
+         rand
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:87:9: error: 'barrier' was not declared in this scope
+         barrier.write(openAngle);
+         ^~~~~~~
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:90:22: error: 'LED_PIN' was not declared in this scope
+         digitalWrite(LED_PIN, LOW);
+                      ^~~~~~~
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:90:22: note: suggested alternative: 'RST_PIN'
+         digitalWrite(LED_PIN, LOW);
+                      ^~~~~~~
+                      RST_PIN
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:105:5: error: 'barrier' was not declared in this scope
+     barrier.write(closedAngle);
+     ^~~~~~~
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino: In function 'int getDistance()':
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:118:29: error: 'THERMISTOR_PIN' was not declared in this scope
+   int rawValue = analogRead(THERMISTOR_PIN);
+                             ^~~~~~~~~~~~~~
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:118:29: note: suggested alternative: 'RST_PIN'
+   int rawValue = analogRead(THERMISTOR_PIN);
+                             ^~~~~~~~~~~~~~
+                             RST_PIN
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino: In function 'void displayMessage(arduino::String, arduino::String)':
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:152:3: error: 'u8g2' was not declared in this scope
+   u8g2.clearBuffer();
+   ^~~~
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:152:3: note: suggested alternative: 'log2'
+   u8g2.clearBuffer();
+   ^~~~
+   log2
+C:\Users\29238929\AppData\Local\Temp\.arduinoIDE-unsaved2026214-12916-15qv9o0.ub4z\sketch_mar14a\sketch_mar14a.ino:153:16: error: 'u8g2_font_ncenB10_tr' was not declared in this scope
+   u8g2.setFont(u8g2_font_ncenB10_tr);
+                ^~~~~~~~~~~~~~~~~~~~
+exit status 1
 
-#define SS_PIN  10    // SDA / SS 腳位（同你原本程式一樣）
-#define RST_PIN  4    // Reset 腳位（同你原本一樣）
-
-MFRC522 rfid(SS_PIN, RST_PIN);   // 建立 MFRC522 物件
-
-void setup() {
-  Serial.begin(115200);
-  while (!Serial);   // 等 Serial 準備好（特別對 Leonardo/Micro 有用）
-
-  SPI.begin();                  // 初始化 SPI
-  rfid.PCD_Init();              // 初始化 MFRC522
-
-  Serial.println("RFID UID 測試程式");
-  Serial.println("請將卡片或鎖匙靠近讀卡器...");
-  Serial.println("----------------------------------------");
-  Serial.println("版本檢查: ");
-  rfid.PCD_DumpVersionToSerial();  // 顯示 MFRC522 版本，確認模組正常
-  Serial.println("----------------------------------------");
-}
-
-void loop() {
-  // 檢查有無新卡
-  if (!rfid.PICC_IsNewCardPresent()) {
-    return;   // 無卡就直接跳過
-  }
-
-  // 嘗試讀取卡片
-  if (!rfid.PICC_ReadCardSerial()) {
-    return;   // 讀取失敗就跳過
-  }
-
-  // 成功讀到卡！印出詳細資訊
-  Serial.println("=== 偵測到卡片 ===");
-  
-  // 顯示卡片類型
-  Serial.print("卡片類型: ");
-  MFRC522::PICC_Type piccType = rfid.PICC_GetType(rfid.uid.sak);
-  Serial.println(rfid.PICC_GetTypeName(piccType));
-
-  // 顯示 UID（最重要部分）
-  Serial.print("UID (HEX): ");
-  for (byte i = 0; i < rfid.uid.size; i++) {
-    if (rfid.uid.uidByte[i] < 0x10) {
-      Serial.print(" 0");           // 補零讓格式好看
-    } else {
-      Serial.print(" ");
-    }
-    Serial.print(rfid.uid.uidByte[i], HEX);
-  }
-  Serial.println();
-
-  // 也印出常用於程式碼的格式（直接 copy paste 用）
-  Serial.print("程式碼格式: {");
-  for (byte i = 0; i < rfid.uid.size; i++) {
-    Serial.print("0x");
-    if (rfid.uid.uidByte[i] < 0x10) Serial.print("0");
-    Serial.print(rfid.uid.uidByte[i], HEX);
-    if (i < rfid.uid.size - 1) Serial.print(", ");
-  }
-  Serial.println("}");
-
-  // 額外顯示 UID 長度（通常是 4 或 7 bytes）
-  Serial.print("UID 位元組數: ");
-  Serial.println(rfid.uid.size);
-
-  Serial.println("----------------------------------------");
-
-  // 停止讀這張卡，避免一直重複讀
-  rfid.PICC_HaltA();
-  
-  // 等待一陣子，讓你有時間抄低
-  delay(2000);
-}
+Compilation error: 'Servo' does not name a type
