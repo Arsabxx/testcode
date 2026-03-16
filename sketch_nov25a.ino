@@ -4,177 +4,226 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include <math.h>  // for log()
+#include <math.h>
 
-// Pin definitions
-#define TRIG_PIN     5
-#define ECHO_PIN     6
-#define SS_PIN      10
-#define RST_PIN      4
-#define SERVO_PIN    9
-#define LED_PIN      7
-#define THERMISTOR_PIN A0
+// === Pin Definitions ===
+#define TRIG_PIN          5     // Ultrasonic sensor Trigger pin
+#define ECHO_PIN          6     // Ultrasonic sensor Echo pin
+#define SS_PIN           10     // MFRC522 SPI SS (SDA) pin
+#define RST_PIN           4     // MFRC522 Reset pin
+#define SERVO_PIN         9     // Servo motor signal pin
+#define LED_PIN           7     // Status LED (green - scan card prompt)
+#define THERMISTOR_PIN   A0     // NTC thermistor analog input pin
 
-// OLED 配置（128x64 I2C）
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
-#define OLED_RESET   -1   // 無 reset pin，用 -1
-#define SCREEN_ADDRESS 0x3C  // 預設 0x3C，如果 scanner 顯示 0x3D 就改成 0x3D
+// === OLED Configuration (SSD1306 128x64 I2C) ===
+#define SCREEN_WIDTH     128
+#define SCREEN_HEIGHT     64
+#define OLED_RESET       -1     // No reset pin used
+#define SCREEN_ADDRESS  0x3C    // I2C address (change to 0x3D if needed)
 
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+// === Thermistor Parameters (NTC 10kΩ, β=3950) ===
+const float NOMINAL_RESISTANCE  = 10000.0;  // 10kΩ at 25°C
+const float NOMINAL_TEMPERATURE = 25.0;     // Reference temperature °C
+const float BETA_COEFFICIENT    = 3950.0;   // Beta value of thermistor
+const float SERIES_RESISTOR     = 10000.0;  // Fixed 10kΩ resistor in voltage divider
 
-// Thermistor constants
-const float nominal_resistance = 10000;
-const float nominal_temperature = 25;
-const float beta_coefficient = 3950;
-const float series_resistor = 10000;
+// === Adjustable System Parameters ===
+const int TRIGGER_DISTANCE   = 20;     // Distance threshold to detect vehicle (cm)
+const int GATE_OPEN_ANGLE    = 180;    // Servo angle for gate OPEN (adjust based on direction)
+const int GATE_CLOSED_ANGLE  = 0;      // Servo angle for gate CLOSED
+const int GATE_OPEN_DURATION = 8000;   // Time (ms) to keep gate open after valid card
 
-// Adjustable parameters
-const int triggerDist   = 120;
-const int openAngle     = 0;
-const int closedAngle   = 90;
-const int gateOpenTime  = 8000;
-
-// Authorized UIDs - 改成你真實 UID
+// === Authorized RFID Card UIDs (4-byte classic MIFARE) ===
 byte authorizedUIDs[][4] = {
-  {0xA1, 0xB2, 0xC3, 0xD4},
-  {0xE5, 0xF6, 0xA7, 0xB8}
+  {0xA1, 0xB2, 0xC3, 0xD4},   // Example UID 1 - REPLACE WITH REAL ONES
+  {0xE5, 0xF6, 0xA7, 0xB8}    // Example UID 2
 };
-const int numAuthorized = 2;
+const int NUM_AUTHORIZED = 2;
 
+// === Global Objects ===
 Servo barrier;
 MFRC522 rfid(SS_PIN, RST_PIN);
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-bool carDetected = false;
-bool gateOpen = false;
+// === State Variables ===
+bool carDetected     = false;
+bool gateOpen        = false;
 unsigned long openStartTime = 0;
 
 void setup() {
   Serial.begin(115200);
-  
+  while (!Serial);
+
+  // Initialize pins
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
-  
+
+  // Attach and initialize servo
   barrier.attach(SERVO_PIN);
-  barrier.write(closedAngle);
-  
+  barrier.write(GATE_CLOSED_ANGLE);   // Start with gate closed
+
+  // Initialize SPI and RFID module
   SPI.begin();
   rfid.PCD_Init();
-  
-  // 初始化 OLED
-  if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
-    Serial.println(F("SSD1306 allocation failed"));
-    for(;;);  // 如果失敗，死循環（可移除）
+
+  // Initialize OLED display
+  if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+    Serial.println(F("SSD1306 initialization failed"));
+    for(;;);  // Halt if display fails
   }
-  
+
+  // Welcome message on OLED
   display.clearDisplay();
-  display.setTextSize(1);               // 文字大小 1
-  display.setTextColor(SSD1306_WHITE);  // 白字（OLED 通常白光）
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
   display.setCursor(0, 10);
   display.println(F("Parking Entrance"));
   display.setCursor(0, 30);
   display.println(F("Approach Vehicle"));
-  display.display();                    // 送出畫面
-  
-  Serial.println("System Ready - Waiting for vehicle");
+  display.display();
+
+  Serial.println(F("System Ready - Waiting for vehicle"));
 }
 
 void loop() {
+  // Read current distance and temperature
   int distance = getDistance();
-  
-  if (distance > 0 && distance < triggerDist && !carDetected && !gateOpen) {
+  float temperature = getTemperature();
+
+  // Print distance and temperature to Serial every loop (for monitoring)
+  static unsigned long lastPrint = 0;
+  if (millis() - lastPrint >= 800) {  // Print every 800ms to avoid flooding
+    lastPrint = millis();
+
+    Serial.print(F("Distance: "));
+    if (distance > 0) {
+      Serial.print(distance);
+      Serial.print(F(" cm"));
+    } else {
+      Serial.print(F("Out of range"));
+    }
+
+    Serial.print(F("   |   Temp: "));
+    if (temperature > -50 && temperature < 100) {  // Reasonable range
+      Serial.print(temperature, 1);
+      Serial.println(F(" C"));
+    } else {
+      Serial.println(F("N/A"));
+    }
+  }
+
+  // Step 1: Detect approaching vehicle
+  if (distance > 0 && distance < TRIGGER_DISTANCE && !carDetected && !gateOpen) {
     carDetected = true;
     digitalWrite(LED_PIN, HIGH);
     displayMessage("Vehicle Detected", "Please Scan Card");
-    Serial.println("Car detected! Please scan RFID card");
+    Serial.println(F("=== Vehicle detected! Please scan RFID card ==="));
   }
-  
+
+  // Step 2: Check for valid RFID card when vehicle is detected
   if (carDetected && !gateOpen) {
     if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
-      Serial.print("Card UID: ");
+      Serial.print(F("Card UID: "));
       for (byte i = 0; i < rfid.uid.size; i++) {
-        Serial.print(rfid.uid.uidByte[i] < 0x10 ? " 0" : " ");
+        if (rfid.uid.uidByte[i] < 0x10) Serial.print("0");
         Serial.print(rfid.uid.uidByte[i], HEX);
+        Serial.print(" ");
       }
       Serial.println();
-      
+
+      // Check if card is authorized
       bool valid = false;
-      for (int i = 0; i < numAuthorized; i++) {
+      for (int i = 0; i < NUM_AUTHORIZED; i++) {
         if (memcmp(rfid.uid.uidByte, authorizedUIDs[i], 4) == 0) {
           valid = true;
           break;
         }
       }
-      
+
       if (valid) {
         displayMessage("Access Granted", "Gate Opening");
-        barrier.write(openAngle);
+        barrier.write(GATE_OPEN_ANGLE);
         gateOpen = true;
         openStartTime = millis();
         digitalWrite(LED_PIN, LOW);
-        Serial.println("Valid card! Gate OPEN");
+        Serial.println(F("Valid card → Gate OPEN"));
       } else {
         displayMessage("Invalid Card", "Try Again");
-        Serial.println("Invalid card!");
+        Serial.println(F("Invalid card!"));
         delay(2000);
         displayMessage("Vehicle Detected", "Please Scan Card");
       }
-      
-      rfid.PICC_HaltA();
+
+      rfid.PICC_HaltA();  // Stop reading current card
     }
   }
-  
-  if (gateOpen && (millis() - openStartTime > gateOpenTime)) {
-    barrier.write(closedAngle);
+
+  // Step 3: Auto-close gate after timeout
+  if (gateOpen && (millis() - openStartTime > GATE_OPEN_DURATION)) {
+    barrier.write(GATE_CLOSED_ANGLE);
     gateOpen = false;
     carDetected = false;
     displayMessage("Parking Entrance", "Approach Vehicle");
-    Serial.println("Gate CLOSED");
+    Serial.println(F("Gate auto CLOSED"));
   }
-  
-  delay(100);
+
+  delay(100);  // Main loop delay
 }
 
-// 溫度補償距離
-int getDistance() {
+// === Read temperature from NTC thermistor ===
+float getTemperature() {
   int rawValue = analogRead(THERMISTOR_PIN);
-  if (rawValue <= 0 || rawValue >= 1023) return -1;
+  if (rawValue <= 0 || rawValue >= 1023) return -999.0;  // Invalid reading
 
-  float resistance = series_resistor * (1023.0 / rawValue - 1.0);
-  float steinhart = resistance / nominal_resistance;
+  float resistance = SERIES_RESISTOR * (1023.0 / rawValue - 1.0);
+  float steinhart = resistance / NOMINAL_RESISTANCE;
   steinhart = log(steinhart);
-  steinhart /= beta_coefficient;
-  steinhart += 1.0 / (nominal_temperature + 273.15);
+  steinhart /= BETA_COEFFICIENT;
+  steinhart += 1.0 / (NOMINAL_TEMPERATURE + 273.15);
   steinhart = 1.0 / steinhart;
   float tempC = steinhart - 273.15;
 
-  float speed_of_sound = 331.3 + (0.606 * tempC);
+  return tempC;
+}
 
+// === Temperature-compensated ultrasonic distance measurement ===
+int getDistance() {
+  float tempC = getTemperature();
+  if (tempC < -50 || tempC > 100) return -1;  // Invalid temperature
+
+  // Speed of sound in air (m/s) adjusted by temperature
+  float speedOfSound = 331.3 + (0.606 * tempC);
+
+  // Trigger pulse
   digitalWrite(TRIG_PIN, LOW);
   delayMicroseconds(2);
   digitalWrite(TRIG_PIN, HIGH);
   delayMicroseconds(10);
   digitalWrite(TRIG_PIN, LOW);
 
+  // Measure echo time (timeout 30ms ≈ 5m max range)
   long duration = pulseIn(ECHO_PIN, HIGH, 30000);
   if (duration == 0) return -1;
 
-  float distance = (duration * speed_of_sound) / 20000.0;
-  if (distance < 2 || distance > 400) return -1;
+  // Calculate distance in cm (round trip / 2)
+  float distanceCm = (duration * speedOfSound) / 20000.0;
 
-  return (int)round(distance);
+  // Filter unrealistic values
+  if (distanceCm < 2 || distanceCm > 400) return -1;
+
+  return (int)round(distanceCm);
 }
 
-// OLED 顯示兩行文字（Adafruit 版）
+// === Display two-line message on OLED ===
 void displayMessage(String line1, String line2) {
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 10);   // 第一行位置
+  display.setCursor(0, 10);
   display.println(line1);
-  display.setCursor(0, 30);   // 第二行位置（可調高低）
+  display.setCursor(0, 30);
   display.println(line2);
-  display.display();          // 必須呼叫才更新畫面
+  display.display();
 }
