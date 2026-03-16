@@ -54,4 +54,23 @@ void loop() {
 
   // 也印出常用於程式碼的格式（直接 copy paste 用）
   Serial.print("程式碼格式: {");
-  for (byte i = 0; i < rfid
+  for (byte i = 0; i < rfid.uid.size; i++) {
+    Serial.print("0x");
+    if (rfid.uid.uidByte[i] < 0x10) Serial.print("0");
+    Serial.print(rfid.uid.uidByte[i], HEX);
+    if (i < rfid.uid.size - 1) Serial.print(", ");
+  }
+  Serial.println("}");
+
+  // 額外顯示 UID 長度（通常是 4 或 7 bytes）
+  Serial.print("UID 位元組數: ");
+  Serial.println(rfid.uid.size);
+
+  Serial.println("----------------------------------------");
+
+  // 停止讀這張卡，避免一直重複讀
+  rfid.PICC_HaltA();
+  
+  // 等待一陣子，讓你有時間抄低
+  delay(2000);
+}
