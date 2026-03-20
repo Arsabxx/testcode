@@ -1,47 +1,13 @@
-#include <SPI.h>
-#include <MFRC522.h>
-
-#define SS_PIN  10
-#define RST_PIN  9   // 建議用 9 做測試，如果你想用 4 就改返 4
-
-MFRC522 rfid(SS_PIN, RST_PIN);
 
 void setup() {
-  Serial.begin(115200);
-  while (!Serial);
-
-  SPI.begin();
-  rfid.PCD_Init();
-
-  Serial.println("RFID UID 測試開始...");
-  Serial.println("請放卡/鎖匙靠近讀卡器");
-  rfid.PCD_DumpVersionToSerial();  // 顯示模組版本，確認硬件 OK
-  Serial.println("----------------------------------------");
+  pinMode(8, OUTPUT);   // Set D8 as output
+  cli();                // Disable interrupts for maximum stability
 }
 
 void loop() {
-  if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) {
-    return;
+  while (1) {           // Tight infinite loop for highest speed
+    PORTB |= (1 << 0);   // Set D8 HIGH (sbi instruction, 2 cycles)
+    PORTB &= ~(1 << 0);  // Set D8 LOW  (cbi instruction, 2 cycles)
+    // rjmp back to loop adds ~2 cycles → total 6 cycles per full cycle
   }
-
-  Serial.println("=== 讀到卡！ ===");
-  Serial.print("UID (HEX): ");
-  for (byte i = 0; i < rfid.uid.size; i++) {
-    if (rfid.uid.uidByte[i] < 0x10) Serial.print("0");
-    Serial.print(rfid.uid.uidByte[i], HEX);
-    Serial.print(" ");
-  }
-  Serial.println();
-
-  Serial.print("直接 copy 格式: {");
-  for (byte i = 0; i < rfid.uid.size; i++) {
-    Serial.print("0x");
-    if (rfid.uid.uidByte[i] < 0x10) Serial.print("0");
-    Serial.print(rfid.uid.uidByte[i], HEX);
-    if (i < rfid.uid.size - 1) Serial.print(", ");
-  }
-  Serial.println("}");
-
-  rfid.PICC_HaltA();
-  delay(1500);  // 避免太快重複
 }
