@@ -1,13 +1,15 @@
-
 void setup() {
-  pinMode(8, OUTPUT);   // Set D8 as output
-  cli();                // Disable interrupts for maximum stability
+  pinMode(8, OUTPUT);
+  TCCR0B = 0;     // 停 Timer0
+  TIMSK0 = 0;
+  noInterrupts();
 }
 
 void loop() {
-  while (1) {           // Tight infinite loop for highest speed
-    PORTB |= (1 << 0);   // Set D8 HIGH (sbi instruction, 2 cycles)
-    PORTB &= ~(1 << 0);  // Set D8 LOW  (cbi instruction, 2 cycles)
-    // rjmp back to loop adds ~2 cycles → total 6 cycles per full cycle
+  while (1) {
+    PORTB |= (1 << 0);
+    delayMicroseconds(5);   // 調呢個 = HIGH 時間
+    PORTB &= ~(1 << 0);
+    delayMicroseconds(5);   // LOW 時間一樣 → 50%
   }
 }
