@@ -1,67 +1,67 @@
-// ==================== PWM Control Using Registers - Arduino Uno R4 WiFi ====================
-// Output: D3 (P105 - GTIOC1A of GPT1)
-// Timer clock: 48 MHz (PCLKD)
-// Theoretical max frequency: \~24 MHz (but practical limit \~5-10 MHz with good waveform)
+// Simple Direct Register PWM on D3 (Uno R4 WiFi)
+// Pin: D3 = P105 = GTIOC1A of GPT1
+// Timer clock \~48 MHz
 
 #include <stdint.h>
 
-// GPT1 Register Base (RA4M1 GPT1)
-#define GPT1_BASE       0x40070000UL
+// GPT1 Base Address
+#define GPT1_BASE  0x40070000UL
 
-#define R_GPT1_GTWP     (*(volatile uint32_t*)(GPT1_BASE + 0x000))  // Write Protection
-#define R_GPT1_GTSTR    (*(volatile uint32_t*)(GPT1_BASE + 0x004))  // Start
-#define R_GPT1_GTSTP    (*(volatile uint32_t*)(GPT1_BASE + 0x008))  // Stop
-#define R_GPT1_GTCR     (*(volatile uint32_t*)(GPT1_BASE + 0x010))  // Control
-#define R_GPT1_GTPSC    (*(volatile uint32_t*)(GPT1_BASE + 0x01C))  // Prescaler (usually not used)
-#define R_GPT1_GTPR     (*(volatile uint32_t*)(GPT1_BASE + 0x028))  // Period Register (ARR)
-#define R_GPT1_GTCCR_A  (*(volatile uint32_t*)(GPT1_BASE + 0x028 + 0x04)) // Compare Register A (Duty for Channel A)
-#define R_GPT1_GTIOR    (*(volatile uint32_t*)(GPT1_BASE + 0x038))  // I/O Control Register
-#define R_GPT1_GTBER    (*(volatile uint32_t*)(GPT1_BASE + 0x040))  // Buffer Enable
+#define GTWP   (*(volatile uint32_t*)(GPT1_BASE + 0x000))  // Write Protection
+#define GTSTR  (*(volatile uint32_t*)(GPT1_BASE + 0x004))  // Start
+#define GTSTP  (*(volatile uint32_t*)(GPT1_BASE + 0x008))  // Stop
+#define GTCR   (*(volatile uint32_t*)(GPT1_BASE + 0x010))  // Control
+#define GTPR   (*(volatile uint32_t*)(GPT1_BASE + 0x028))  // Period (ARR)
+#define GTCCR0 (*(volatile uint32_t*)(GPT1_BASE + 0x02C))  // Compare Register A (Duty)
+#define GTIOR  (*(volatile uint32_t*)(GPT1_BASE + 0x038))  // I/O Control
 
-// PFS (Pin Function Select) for D3 = P105
-#define R_PFS_BASE      0x40040000UL
-#define R_PFS_P105      (*(volatile uint32_t*)(R_PFS_BASE + 0x0844 + (5*4)))  // Port 1, Pin 5? Wait, correct for P105
+// PFS for P105 (D3)
+#define PFS_P105 (*(volatile uint32_t*)(0x40040800 + 0xA8))  // Correct address for P105
 
 void setup() {
   Serial.begin(115200);
-  while (!Serial);
-
-  Serial.println("PWM on D3 (GPT1 GTIOC1A) - Direct Register Control");
+  delay(1000);
+  Serial.println("=== PWM Register Test on D3 (R4 WiFi) ===");
 
   // 1. Unlock write protection
-  R_GPT1_GTWP = 0xA5000000UL;   // Magic value to unlock
+  GTWP = 0xA5000000UL;
 
-  // 2. Stop timer
-  R_GPT1_GTSTP = 0x00000002UL;  // Bit 1 for GPT1
+  // 2. Stop GPT1
+  GTSTP = 0x00000002UL;   // Bit for GPT1
 
   // 3. Configure Pin D3 (P105) as GTIOC1A output
-  // PFS setting for GPT output (PSL value for GTIOC1A on P105 is usually 0x13 or 0x0B - test both if needed)
-  R_PFS_P105 = 0x00000000;      // Clear
-  R_PFS_P105 = 0x00000013;      // Set to GPT alternate function (common value)
+  PFS_P105 = 0x00000000;           // Clear
+  PFS_P105 = (1 << 6) | (1 << 5) | 0x13;   // PMR=1 (peripheral), PDR=1 (output), PSEL=0x13 (GPT)
 
-  // 4. Basic GPT1 configuration for PWM (Saw-wave, count up)
-  R_GPT1_GTCR = 0x00000000;
-  R_GPT1_GTCR |= (1UL << 16);   // PWM mode (saw wave)
-  R_GPT1_GTCR |= (1UL << 0);    // Count up (optional)
+  // 4. GPT1 PWM Configuration (Saw-wave PWM)
+  GTCR = 0x00000000;
+  GTCR |= (1UL << 16);     // PWM mode (saw wave)
 
-  // === Test different frequencies here (change these two lines) ===
-  
-  // MAX frequency (low resolution) - for your "max freq" test
-  R_GPT1_GTPR    = 1;           // Period = 1 → \~24 MHz theoretical
-  R_GPT1_GTCCR_A = 1;           // Duty ≈ 50%
+  // === Frequency settings (change here for testing) ===
+  GTPR   = 479;            // Period → \~100 kHz (good starting point)
+  GTCCR0 = 240;            // Duty cycle \~50%
 
-  // Better high frequency example (\~1 MHz)
-  // R_GPT1_GTPR    = 47;       // 48MHz / 48 ≈ 1 MHz
-  // R_GPT1_GTCCR_A = 24;       // 50% duty
+  // Max frequency test (uncomment if you want to try)
+  // GTPR   = 1;           // Theoretical \~24 MHz
+  // GTCCR0 = 1;
 
-  // Medium frequency (good waveform, recommended for report)
-  // R_GPT1_GTPR    = 479;      // ≈ 100 kHz
-  // R_GPT1_GTCCR_A = 240;      // 50% duty
+  // 5. Configure GTIOC1A (Channel A) output
+  GTIOR = 0x00000000;
+  GTIOR |= 0x00000001;     // GTIOCA output enable
+  GTIOR |= (0x6UL << 8);   // PWM output mode
 
-  // 5. Configure GTIOC1A output (Channel A)
-  R_GPT1_GTIOR = 0x00000000;
-  R_GPT1_GTIOR |= (1UL << 0);   // GTIOCA output enable
-  R_GPT1_GTIOR |= (0x6UL << 8); // PWM output mode (toggle on compare match for PWM)
+  // 6. Start timer
+  GTSTR = 0x00000002UL;
+
+  Serial.println("PWM started on D3! Connect oscilloscope now.");
+  Serial.println("If still no output, try changing PFS_P105 value to 0x0000000B or 0x00000023");
+}
+
+void loop() {
+  delay(2000);
+  Serial.print("Current Period: ");
+  Serial.println(GTPR);
+}  R_GPT1_GTIOR |= (0x6UL << 8); // PWM output mode (toggle on compare match for PWM)
 
   // Optional: Enable buffer for smoother operation
   // R_GPT1_GTBER = 0x00000001;
