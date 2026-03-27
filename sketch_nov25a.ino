@@ -1,93 +1,82 @@
 // ==================== PWM Control Using Registers - Arduino Uno R4 WiFi ====================
-// Mini Project: PWM output on D3 (IO D3) using GPT registers
-// MCU: Renesas RA4M1
-// Timer: GPT6 (D3 pin maps to GTIOC6B)
-// Target: Maximum frequency + comparison of different settings
+// Output: D3 (P105 - GTIOC1A of GPT1)
+// Timer clock: 48 MHz (PCLKD)
+// Theoretical max frequency: \~24 MHz (but practical limit \~5-10 MHz with good waveform)
 
 #include <stdint.h>
 
-// GPT6 Register Base Address (from RA4M1 Hardware Manual)
-#define GPT6_BASE       0x40074000UL
+// GPT1 Register Base (RA4M1 GPT1)
+#define GPT1_BASE       0x40070000UL
 
-// Register definitions (key registers for PWM)
-#define R_GPT6_GTWP     (*(volatile uint32_t*)(GPT6_BASE + 0x00))  // Write Protection Register
-#define R_GPT6_GTSTR    (*(volatile uint32_t*)(GPT6_BASE + 0x04))  // Start Register
-#define R_GPT6_GTSTP    (*(volatile uint32_t*)(GPT6_BASE + 0x08))  // Stop Register
-#define R_GPT6_GTCR     (*(volatile uint32_t*)(GPT6_BASE + 0x10))  // Control Register
-#define R_GPT6_GTPSC    (*(volatile uint32_t*)(GPT6_BASE + 0x1C))  // Prescaler (not always used directly)
-#define R_GPT6_GTPR     (*(volatile uint32_t*)(GPT6_BASE + 0x28))  // Period Register (like ARR)
-#define R_GPT6_GTCCR_B  (*(volatile uint32_t*)(GPT6_BASE + 0x2C))  // Compare Register B (Duty cycle for Channel B)
-#define R_GPT6_GTIOR    (*(volatile uint32_t*)(GPT6_BASE + 0x38))  // I/O Control Register (output mode)
-#define R_GPT6_GTBER    (*(volatile uint32_t*)(GPT6_BASE + 0x40))  // Buffer Enable
-#define R_GPT6_GTUD     (*(volatile uint32_t*)(GPT6_BASE + 0x18))  // Count Direction
+#define R_GPT1_GTWP     (*(volatile uint32_t*)(GPT1_BASE + 0x000))  // Write Protection
+#define R_GPT1_GTSTR    (*(volatile uint32_t*)(GPT1_BASE + 0x004))  // Start
+#define R_GPT1_GTSTP    (*(volatile uint32_t*)(GPT1_BASE + 0x008))  // Stop
+#define R_GPT1_GTCR     (*(volatile uint32_t*)(GPT1_BASE + 0x010))  // Control
+#define R_GPT1_GTPSC    (*(volatile uint32_t*)(GPT1_BASE + 0x01C))  // Prescaler (usually not used)
+#define R_GPT1_GTPR     (*(volatile uint32_t*)(GPT1_BASE + 0x028))  // Period Register (ARR)
+#define R_GPT1_GTCCR_A  (*(volatile uint32_t*)(GPT1_BASE + 0x028 + 0x04)) // Compare Register A (Duty for Channel A)
+#define R_GPT1_GTIOR    (*(volatile uint32_t*)(GPT1_BASE + 0x038))  // I/O Control Register
+#define R_GPT1_GTBER    (*(volatile uint32_t*)(GPT1_BASE + 0x040))  // Buffer Enable
 
-// Pin Function Select for D3 (P105 or correct port/pin - confirm with datasheet)
-#define R_PFS_P105      (*(volatile uint32_t*)(0x40040000 + 0x0844 + (5*4)))  // Adjust port/pin if needed for your board
+// PFS (Pin Function Select) for D3 = P105
+#define R_PFS_BASE      0x40040000UL
+#define R_PFS_P105      (*(volatile uint32_t*)(R_PFS_BASE + 0x0844 + (5*4)))  // Port 1, Pin 5? Wait, correct for P105
 
 void setup() {
   Serial.begin(115200);
-  while(!Serial);
+  while (!Serial);
 
-  Serial.println("PWM Control using Registers - Arduino Uno R4 WiFi");
-  Serial.println("Output: D3 (GPT6 Channel B)");
+  Serial.println("PWM on D3 (GPT1 GTIOC1A) - Direct Register Control");
 
-  // 1. Disable write protection
-  R_GPT6_GTWP = 0xA5000000;   // Unlock protection (A5 magic value)
+  // 1. Unlock write protection
+  R_GPT1_GTWP = 0xA5000000UL;   // Magic value to unlock
 
-  // 2. Stop the timer first
-  R_GPT6_GTSTP = 0x00000040;  // Stop GPT6 (bit for channel 6)
+  // 2. Stop timer
+  R_GPT1_GTSTP = 0x00000002UL;  // Bit 1 for GPT1
 
-  // 3. Configure Pin D3 as GPT6 GTIOCB output (Alternate Function)
-  // Typical PFS setting for GPT output on D3 (check exact value in RA4M1 datasheet - often 0x13 or 0x23)
-  R_PFS_P105 = 0x00000000;           // Clear first
-  R_PFS_P105 = 0x00000013;           // Set to GPT output (adjust if pin mapping differs)
+  // 3. Configure Pin D3 (P105) as GTIOC1A output
+  // PFS setting for GPT output (PSL value for GTIOC1A on P105 is usually 0x13 or 0x0B - test both if needed)
+  R_PFS_P105 = 0x00000000;      // Clear
+  R_PFS_P105 = 0x00000013;      // Set to GPT alternate function (common value)
 
-  // 4. Basic GPT Configuration for Saw-wave PWM (single slope)
-  R_GPT6_GTCR = 0x00000000;          // Clear control register
-  R_GPT6_GTCR |= (0x1 << 16);        // Set PWM mode (saw wave)
-  R_GPT6_GTUD = 0x00000001;          // Count up
+  // 4. Basic GPT1 configuration for PWM (Saw-wave, count up)
+  R_GPT1_GTCR = 0x00000000;
+  R_GPT1_GTCR |= (1UL << 16);   // PWM mode (saw wave)
+  R_GPT1_GTCR |= (1UL << 0);    // Count up (optional)
 
-  // === Change these values to test different frequencies and resolutions ===
+  // === Test different frequencies here (change these two lines) ===
   
-  // Example 1: Maximum frequency (very low resolution)
-  R_GPT6_GTPR    = 1;                // Period (ARR equivalent) = 1 → \~24 MHz theoretical
-  R_GPT6_GTCCR_B = 1;                // Duty cycle ≈ 50%
+  // MAX frequency (low resolution) - for your "max freq" test
+  R_GPT1_GTPR    = 1;           // Period = 1 → \~24 MHz theoretical
+  R_GPT1_GTCCR_A = 1;           // Duty ≈ 50%
 
-  // Example 2: High frequency with better resolution (uncomment to test)
-  // R_GPT6_GTPR    = 47;            // ≈ 1 MHz (48MHz / 48)
-  // R_GPT6_GTCCR_B = 24;            // 50% duty
+  // Better high frequency example (\~1 MHz)
+  // R_GPT1_GTPR    = 47;       // 48MHz / 48 ≈ 1 MHz
+  // R_GPT1_GTCCR_A = 24;       // 50% duty
 
-  // Example 3: Medium frequency (good for testing)
-  // R_GPT6_GTPR    = 479;           // ≈ 100 kHz
-  // R_GPT6_GTCCR_B = 240;           // 50% duty
+  // Medium frequency (good waveform, recommended for report)
+  // R_GPT1_GTPR    = 479;      // ≈ 100 kHz
+  // R_GPT1_GTCCR_A = 240;      // 50% duty
 
-  // 5. Configure output pin (GTIOCB - Channel B)
-  R_GPT6_GTIOR = 0x00000000;         // Clear
-  R_GPT6_GTIOR |= (0x1 << 0);        // Output enable for GTIOCB
-  R_GPT6_GTIOR |= (0x6 << 8);        // PWM output mode (compare match)
+  // 5. Configure GTIOC1A output (Channel A)
+  R_GPT1_GTIOR = 0x00000000;
+  R_GPT1_GTIOR |= (1UL << 0);   // GTIOCA output enable
+  R_GPT1_GTIOR |= (0x6UL << 8); // PWM output mode (toggle on compare match for PWM)
 
-  // Enable buffer if needed (optional for smoother updates)
-  // R_GPT6_GTBER = 0x00000001;
+  // Optional: Enable buffer for smoother operation
+  // R_GPT1_GTBER = 0x00000001;
 
   // 6. Start the timer
-  R_GPT6_GTSTR = 0x00000040;         // Start GPT6
+  R_GPT1_GTSTR = 0x00000002UL;  // Start GPT1
 
-  Serial.println("PWM started on D3 - Check with oscilloscope!");
-  Serial.println("Change GTPR and GTCCR_B values to compare different frequencies.");
+  Serial.println("PWM started on D3!");
+  Serial.println("Connect oscilloscope to D3 and check waveform.");
 }
 
 void loop() {
-  // Optional: Slowly change duty cycle for demonstration (for low frequency only)
-  // For max frequency tests, keep it static or comment this out
-
-  static uint32_t duty = 0;
-  duty = (duty + 1) % (R_GPT6_GTPR + 1);   // Simple ramp
-  R_GPT6_GTCCR_B = duty;
-
+  // For max frequency test, leave empty or slow update
+  // You can add Serial output here to monitor current settings
+  delay(2000);
   Serial.print("Current Period (GTPR): ");
-  Serial.print(R_GPT6_GTPR);
-  Serial.print(" | Duty (GTCCR_B): ");
-  Serial.println(R_GPT6_GTCCR_B);
-
-  delay(1000);   // Slow update - remove or reduce for high frequency tests
+  Serial.println(R_GPT1_GTPR);
 }
