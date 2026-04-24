@@ -1,108 +1,167 @@
 /*
- * ELE2003-2526 Mechatronics Systems - Week 9 Coding Challenge
- * WiFi Control: Button → Arduino Uno R4 WiFi → TP-Link Smart Switch
- * 
- * Board: Arduino Uno R4 WiFi
- * Function: Press button once → toggle the smart switch ON / OFF
- * Switch IP: 192.168.0.181
+  WiFi Web Server LED Blink
+
+  A simple web server that lets you blink an LED via the web.
+  This sketch will create a new access point (with no password).
+  It will then launch a new server and print out the IP address
+  to the Serial Monitor. From there, you can open that address in a web browser
+  to turn on and off the LED on pin 13.
+
+  If the IP address of your board is yourAddress:
+    http://yourAddress/H turns the LED on
+    http://yourAddress/L turns it off
+
+  created 25 Nov 2012
+  by Tom Igoe
+  adapted to WiFi AP by Adafruit
+
+  Find the full UNO R4 WiFi Network documentation here:
+  https://docs.arduino.cc/tutorials/uno-r4-wifi/wifi-examples#access-point
  */
 
-#include <WiFiS3.h>          // Important: Use WiFiS3 for Uno R4 WiFi
+#include "WiFiS3.h"
 
-// ================== WiFi Settings ==================
-const char* ssid = "YOUR_WIFI_SSID";           // ← Change to your WiFi name
-const char* password = "YOUR_WIFI_PASSWORD";   // ← Change to your WiFi password
+#include "arduino_secrets.h" 
 
-// ================== Switch Settings ==================
-const char* switchIP = "192.168.0.181";        // From your photo
-const int   switchPort = 9999;                 // Kasa local control port
+///////please enter your sensitive data in the Secret tab/arduino_secrets.h
+char ssid[] = SECRET_SSID;        // your network SSID (name)
+char pass[] = SECRET_PASS;        // your network password (use for WPA, or use as key for WEP)
+int keyIndex = 0;                 // your network key index number (needed only for WEP)
 
-// ================== Button Settings ==================
-const int buttonPin = 2;                       // Recommended pins: 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, A0-A5
-                                               // Connect button between this pin and GND
-
-// Variables for button (debounce)
-bool lastButtonState = HIGH;
-unsigned long lastDebounceTime = 0;
-const unsigned long debounceDelay = 50;        // 50ms debounce
+int led =  LED_BUILTIN;
+int status = WL_IDLE_STATUS;
+WiFiServer server(80);
 
 void setup() {
-  Serial.begin(115200);
-  pinMode(buttonPin, INPUT_PULLUP);            // Use internal pull-up
+  //Initialize serial and wait for port to open:
+  Serial.begin(9600);
+  while (!Serial) {
+    ; // wait for serial port to connect. Needed for native USB port only
+  }
+  Serial.println("Access Point Web Server");
 
-  Serial.println("\n=== Uno R4 WiFi - TP-Link Kasa Switch Controller ===");
+  pinMode(led, OUTPUT);      // set the LED pin mode
 
-  // Connect to WiFi
-  WiFi.begin(ssid, password);
-  Serial.print("Connecting to WiFi: ");
-  Serial.print(ssid);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
+  // check for the WiFi module:
+  if (WiFi.status() == WL_NO_MODULE) {
+    Serial.println("Communication with WiFi module failed!");
+    // don't continue
+    while (true);
   }
 
-  Serial.println("\nWiFi Connected!");
-  Serial.print("Uno R4 IP Address: ");
-  Serial.println(WiFi.localIP());
-  Serial.print("Target Switch IP: ");
-  Serial.println(switchIP);
-  Serial.println("Ready! Press the button to toggle the switch.");
+  String fv = WiFi.firmwareVersion();
+  if (fv < WIFI_FIRMWARE_LATEST_VERSION) {
+    Serial.println("Please upgrade the firmware");
+  }
+
+  // by default the local IP address will be 192.168.4.1
+  // you can override it with the following:
+  WiFi.config(IPAddress(192,48,56,2));
+
+  // print the network name (SSID);
+  Serial.print("Creating access point named: ");
+  Serial.println(ssid);
+
+  // Create open network. Change this line if you want to create an WEP network:
+  status = WiFi.beginAP(ssid, pass);
+  if (status != WL_AP_LISTENING) {
+    Serial.println("Creating access point failed");
+    // don't continue
+    while (true);
+  }
+
+  // wait 10 seconds for connection:
+  delay(10000);
+
+  // start the web server on port 80
+  server.begin();
+
+  // you're connected now, so print out the status
+  printWiFiStatus();
 }
+
 
 void loop() {
-  bool buttonState = digitalRead(buttonPin);
+  
+  // compare the previous status to the current status
+  if (status != WiFi.status()) {
+    // it has changed update the variable
+    status = WiFi.status();
 
-  // Detect button press (falling edge + debounce)
-  if (buttonState == LOW && lastButtonState == HIGH && 
-      (millis() - lastDebounceTime) > debounceDelay) {
-    
-    lastDebounceTime = millis();
-    Serial.println("\n[EVENT] Button Pressed! Toggling Smart Switch...");
-
-    toggleKasaSwitch();
+    if (status == WL_AP_CONNECTED) {
+      // a device has connected to the AP
+      Serial.println("Device connected to AP");
+    } else {
+      // a device has disconnected from the AP, and we are back in listening mode
+      Serial.println("Device disconnected from AP");
+    }
   }
+  
+  WiFiClient client = server.available();   // listen for incoming clients
 
-  lastButtonState = buttonState;
-  delay(10);
-}
+  if (client) {                             // if you get a client,
+    Serial.println("new client");           // print a message out the serial port
+    String currentLine = "";                // make a String to hold incoming data from the client
+    while (client.connected()) {            // loop while the client's connected
+      delayMicroseconds(10);                // This is required for the Arduino Nano RP2040 Connect - otherwise it will loop so fast that SPI will never be served.
+      if (client.available()) {             // if there's bytes to read from the client,
+        char c = client.read();             // read a byte, then
+        Serial.write(c);                    // print it out to the serial monitor
+        if (c == '\n') {                    // if the byte is a newline character
 
-// ====================== Toggle Function ======================
-void toggleKasaSwitch() {
-  WiFiClient client;
+          // if the current line is blank, you got two newline characters in a row.
+          // that's the end of the client HTTP request, so send a response:
+          if (currentLine.length() == 0) {
+            // HTTP headers always start with a response code (e.g. HTTP/1.1 200 OK)
+            // and a content-type so the client knows what's coming, then a blank line:
+            client.println("HTTP/1.1 200 OK");
+            client.println("Content-type:text/html");
+            client.println();
 
-  if (client.connect(switchIP, switchPort)) {
-    Serial.println("Connected to switch... sending toggle command");
+            // the content of the HTTP response follows the header:
+            client.print("<p style=\"font-size:7vw;\">Click <a href=\"/H\">here</a> turn the LED on<br></p>");
+            client.print("<p style=\"font-size:7vw;\">Click <a href=\"/L\">here</a> turn the LED off<br></p>");
 
-    // Simple toggle command (JSON + XOR encryption)
-    const char* cmd = "{\"system\":{\"set_relay_state\":{\"state\":-1}}}";  // -1 = toggle
+            // The HTTP response ends with another blank line:
+            client.println();
+            // break out of the while loop:
+            break;
+          }
+          else {      // if you got a newline, then clear currentLine:
+            currentLine = "";
+          }
+        }
+        else if (c != '\r') {    // if you got anything else but a carriage return character,
+          currentLine += c;      // add it to the end of the currentLine
+        }
 
-    // Encrypt the command (TP-Link Kasa uses simple XOR 0xAB)
-    String encrypted = encryptKasa(cmd);
-
-    client.print(encrypted);
+        // Check to see if the client request was "GET /H" or "GET /L":
+        if (currentLine.endsWith("GET /H")) {
+          digitalWrite(led, HIGH);               // GET /H turns the LED on
+        }
+        if (currentLine.endsWith("GET /L")) {
+          digitalWrite(led, LOW);                // GET /L turns the LED off
+        }
+      }
+    }
+    // close the connection:
     client.stop();
-
-    Serial.println("Toggle command sent successfully!");
-  } 
-  else {
-    Serial.println("Connection failed! Check switch IP and WiFi.");
+    Serial.println("client disconnected");
   }
 }
 
-// ====================== Kasa Encryption Function ======================
-String encryptKasa(const char* str) {
-  String result = "";
-  int key = 0xAB;                     // Fixed key for Kasa local protocol
-  int len = strlen(str);
+void printWiFiStatus() {
+  // print the SSID of the network you're attached to:
+  Serial.print("SSID: ");
+  Serial.println(WiFi.SSID());
 
-  // First byte is the length (big endian, but we send as string)
-  result += (char)((len >> 8) & 0xFF);
-  result += (char)(len & 0xFF);
+  // print your WiFi shield's IP address:
+  IPAddress ip = WiFi.localIP();
+  Serial.print("IP Address: ");
+  Serial.println(ip);
 
-  for (int i = 0; i < len; i++) {
-    result += (char)(str[i] ^ key);
-    key = result[result.length() - 1];   // Update key for next byte
-  }
-  return result;
+  // print where to go in a browser:
+  Serial.print("To see this page in action, open a browser to http://");
+  Serial.println(ip);
+
 }
