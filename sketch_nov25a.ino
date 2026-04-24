@@ -1,82 +1,108 @@
-// Simple Direct Register PWM on D3 (Uno R4 WiFi)
-// Pin: D3 = P105 = GTIOC1A of GPT1
-// Timer clock \~48 MHz
+/*
+ * ELE2003-2526 Mechatronics Systems - Week 9 Coding Challenge
+ * WiFi Control: Button → Arduino Uno R4 WiFi → TP-Link Smart Switch
+ * 
+ * Board: Arduino Uno R4 WiFi
+ * Function: Press button once → toggle the smart switch ON / OFF
+ * Switch IP: 192.168.0.181
+ */
 
-#include <stdint.h>
+#include <WiFiS3.h>          // Important: Use WiFiS3 for Uno R4 WiFi
 
-// GPT1 Base Address
-#define GPT1_BASE  0x40070000UL
+// ================== WiFi Settings ==================
+const char* ssid = "YOUR_WIFI_SSID";           // ← Change to your WiFi name
+const char* password = "YOUR_WIFI_PASSWORD";   // ← Change to your WiFi password
 
-#define GTWP   (*(volatile uint32_t*)(GPT1_BASE + 0x000))  // Write Protection
-#define GTSTR  (*(volatile uint32_t*)(GPT1_BASE + 0x004))  // Start
-#define GTSTP  (*(volatile uint32_t*)(GPT1_BASE + 0x008))  // Stop
-#define GTCR   (*(volatile uint32_t*)(GPT1_BASE + 0x010))  // Control
-#define GTPR   (*(volatile uint32_t*)(GPT1_BASE + 0x028))  // Period (ARR)
-#define GTCCR0 (*(volatile uint32_t*)(GPT1_BASE + 0x02C))  // Compare Register A (Duty)
-#define GTIOR  (*(volatile uint32_t*)(GPT1_BASE + 0x038))  // I/O Control
+// ================== Switch Settings ==================
+const char* switchIP = "192.168.0.181";        // From your photo
+const int   switchPort = 9999;                 // Kasa local control port
 
-// PFS for P105 (D3)
-#define PFS_P105 (*(volatile uint32_t*)(0x40040800 + 0xA8))  // Correct address for P105
+// ================== Button Settings ==================
+const int buttonPin = 2;                       // Recommended pins: 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, A0-A5
+                                               // Connect button between this pin and GND
+
+// Variables for button (debounce)
+bool lastButtonState = HIGH;
+unsigned long lastDebounceTime = 0;
+const unsigned long debounceDelay = 50;        // 50ms debounce
 
 void setup() {
   Serial.begin(115200);
-  delay(1000);
-  Serial.println("=== PWM Register Test on D3 (R4 WiFi) ===");
+  pinMode(buttonPin, INPUT_PULLUP);            // Use internal pull-up
 
-  // 1. Unlock write protection
-  GTWP = 0xA5000000UL;
+  Serial.println("\n=== Uno R4 WiFi - TP-Link Kasa Switch Controller ===");
 
-  // 2. Stop GPT1
-  GTSTP = 0x00000002UL;   // Bit for GPT1
+  // Connect to WiFi
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi: ");
+  Serial.print(ssid);
 
-  // 3. Configure Pin D3 (P105) as GTIOC1A output
-  PFS_P105 = 0x00000000;           // Clear
-  PFS_P105 = (1 << 6) | (1 << 5) | 0x13;   // PMR=1 (peripheral), PDR=1 (output), PSEL=0x13 (GPT)
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
 
-  // 4. GPT1 PWM Configuration (Saw-wave PWM)
-  GTCR = 0x00000000;
-  GTCR |= (1UL << 16);     // PWM mode (saw wave)
-
-  // === Frequency settings (change here for testing) ===
-  GTPR   = 479;            // Period → \~100 kHz (good starting point)
-  GTCCR0 = 240;            // Duty cycle \~50%
-
-  // Max frequency test (uncomment if you want to try)
-  // GTPR   = 1;           // Theoretical \~24 MHz
-  // GTCCR0 = 1;
-
-  // 5. Configure GTIOC1A (Channel A) output
-  GTIOR = 0x00000000;
-  GTIOR |= 0x00000001;     // GTIOCA output enable
-  GTIOR |= (0x6UL << 8);   // PWM output mode
-
-  // 6. Start timer
-  GTSTR = 0x00000002UL;
-
-  Serial.println("PWM started on D3! Connect oscilloscope now.");
-  Serial.println("If still no output, try changing PFS_P105 value to 0x0000000B or 0x00000023");
+  Serial.println("\nWiFi Connected!");
+  Serial.print("Uno R4 IP Address: ");
+  Serial.println(WiFi.localIP());
+  Serial.print("Target Switch IP: ");
+  Serial.println(switchIP);
+  Serial.println("Ready! Press the button to toggle the switch.");
 }
 
 void loop() {
-  delay(2000);
-  Serial.print("Current Period: ");
-  Serial.println(GTPR);
-}  R_GPT1_GTIOR |= (0x6UL << 8); // PWM output mode (toggle on compare match for PWM)
+  bool buttonState = digitalRead(buttonPin);
 
-  // Optional: Enable buffer for smoother operation
-  // R_GPT1_GTBER = 0x00000001;
+  // Detect button press (falling edge + debounce)
+  if (buttonState == LOW && lastButtonState == HIGH && 
+      (millis() - lastDebounceTime) > debounceDelay) {
+    
+    lastDebounceTime = millis();
+    Serial.println("\n[EVENT] Button Pressed! Toggling Smart Switch...");
 
-  // 6. Start the timer
-  R_GPT1_GTSTR = 0x00000002UL;  // Start GPT1
+    toggleKasaSwitch();
+  }
 
-  Serial.println("PWM started on D3!");
-  Serial.println("Connect oscilloscope to D3 and check waveform.");
+  lastButtonState = buttonState;
+  delay(10);
 }
 
-void loop() {
-  // For max frequency test, leave empty or slow update
-  // You can add Serial output here to monitor current settings
-  delay(2000);
-  Serial.print("Current Period (GTPR): ");
-  Serial.println(R_GPT1_GTPR);
+// ====================== Toggle Function ======================
+void toggleKasaSwitch() {
+  WiFiClient client;
+
+  if (client.connect(switchIP, switchPort)) {
+    Serial.println("Connected to switch... sending toggle command");
+
+    // Simple toggle command (JSON + XOR encryption)
+    const char* cmd = "{\"system\":{\"set_relay_state\":{\"state\":-1}}}";  // -1 = toggle
+
+    // Encrypt the command (TP-Link Kasa uses simple XOR 0xAB)
+    String encrypted = encryptKasa(cmd);
+
+    client.print(encrypted);
+    client.stop();
+
+    Serial.println("Toggle command sent successfully!");
+  } 
+  else {
+    Serial.println("Connection failed! Check switch IP and WiFi.");
+  }
+}
+
+// ====================== Kasa Encryption Function ======================
+String encryptKasa(const char* str) {
+  String result = "";
+  int key = 0xAB;                     // Fixed key for Kasa local protocol
+  int len = strlen(str);
+
+  // First byte is the length (big endian, but we send as string)
+  result += (char)((len >> 8) & 0xFF);
+  result += (char)(len & 0xFF);
+
+  for (int i = 0; i < len; i++) {
+    result += (char)(str[i] ^ key);
+    key = result[result.length() - 1];   // Update key for next byte
+  }
+  return result;
 }
