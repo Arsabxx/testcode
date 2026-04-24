@@ -1,119 +1,68 @@
-#include <WiFiS3.h>
+#include <ArduinoBLE.h>
 
-// WiFi Credentials (from PDF page 11)
-const char* ssid     = "TP-Link_4B2C";
-const char* password = "43545148";
-const char* host     = "192.168.0.181"; // Target Switch IP
-const int   port     = 80;              // Standard HTTP port
+// BLE Service and Characteristic UUIDs
+// These are standard unique identifiers for the BLE service
+BLEService ledService("19B10000-E8F2-537E-4F6C-D104768A1214"); 
 
-// Hardware Pin Definitions
-const int buttonPin = 8;  // Button connected to Pin 8 (per PDF page 10)
-int cnt = 0;              // Counter to track button presses
-bool lastButtonState = HIGH;
+// BLE Characteristic: "19B10001" allows remote device to Write (1 or 0)
+BLEByteCharacteristic switchCharacteristic("19B10001-E8F2-537E-4F6C-D104768A1214", BLERead | BLEWrite);
+
+const int ledPin = LED_BUILTIN; // Use the onboard LED (Pin 13)
 
 void setup() {
   Serial.begin(115200);
-  while (!Serial); // Wait for Serial Monitor to open
+  while (!Serial); // Wait for Serial Monitor
 
-  pinMode(buttonPin, INPUT_PULLUP); // Use internal pull-up resistor
+  pinMode(ledPin, OUTPUT); // Initialize LED pin as output
 
-  Serial.println("\n--- ELE2003 Week 9: WiFi Switch Challenge ---");
-  
-  // Start WiFi connection
-  Serial.print("Attempting to connect to SSID: ");
-  Serial.println(ssid);
-  WiFi.begin(ssid, password);
-
-  // Check connection status
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
+  // Initialize BLE hardware
+  if (!BLE.begin()) {
+    Serial.println("Starting BLE failed!");
+    while (1);
   }
 
-  Serial.println("\nWiFi Connected!");
-  Serial.print("Arduino IP Address: ");
-  Serial.println(WiFi.localIP());
-  Serial.println("Control Options:");
-  Serial.println(" - Type '1' in Serial Monitor to turn ON");
-  Serial.println(" - Type '0' in Serial Monitor to turn OFF");
-  Serial.println(" - Press the physical button to toggle");
+  // Set local name that will appear on your phone
+  BLE.setLocalName("UnoR4_BLE_Control");
+  BLE.setAdvertisedService(ledService);
+
+  // Add the characteristic to the service
+  ledService.addCharacteristic(switchCharacteristic);
+  BLE.addService(ledService);
+
+  // Set initial value for the characteristic
+  switchCharacteristic.writeValue(0);
+
+  // Start advertising so phones can find it
+  BLE.advertise();
+
+  Serial.println("BLE Device Active, waiting for connections...");
+  Serial.println("Use nRF Connect app to connect and write '01' to turn on LED.");
 }
 
 void loop() {
-  // --- Method 1: Serial Monitor Control ---
-  if (Serial.available() > 0) {
-    char input = Serial.read();
-    if (input == '1') {
-      Serial.println("Serial Input: ON");
-      sendHttpRequest(true);
-    } else if (input == '0') {
-      Serial.println("Serial Input: OFF");
-      sendHttpRequest(false);
-    }
-  }
+  // Listen for BLE centrals (e.g., your smartphone)
+  BLEDevice central = BLE.central();
 
-  // --- Method 2: Physical Button Control (Coding Challenge Logic) ---
-  bool currentButtonState = digitalRead(buttonPin);
-  
-  // Detect falling edge (button press)
-  if (currentButtonState == LOW && lastButtonState == HIGH) {
-    delay(50); // Simple debounce delay
-    cnt++;     // Increment counter
-    
-    Serial.print("Button Pressed! Count: ");
-    Serial.println(cnt);
-    
-    // If count is odd -> ON, if count is even -> OFF
-    if (cnt % 2 != 0) {
-      sendHttpRequest(true);
-    } else {
-      sendHttpRequest(false);
-    }
-  }
-  lastButtonState = currentButtonState;
-}
+  // If a phone is connected to the Arduino
+  if (central) {
+    Serial.print("Connected to central: ");
+    Serial.println(central.address());
 
-/**
- * Sends an HTTP GET request to the smart switch
- * Format: GET /rpc/Switch.set?id=0&on=true HTTP/1.1
- */
-void sendHttpRequest(bool turnOn) {
-  WiFiClient client;
-  
-  Serial.print("Connecting to switch at ");
-  Serial.print(host);
-  
-  if (client.connect(host, port)) {
-    Serial.println("... Connected!");
-
-    // Construct the URL string based on the state
-    String stateStr = (turnOn ? "true" : "false");
-    String url = "/rpc/Switch.set?id=0&on=" + stateStr;
-
-    // Send HTTP Request (per PDF page 9-10 instructions)
-    client.print("GET ");
-    client.print(url);
-    client.println(" HTTP/1.1");
-    
-    client.print("Host: ");
-    client.println(host);
-    
-    client.println("Connection: close");
-    client.println(); // CR LF: Required empty line to end HTTP header
-
-    Serial.print("Request Sent: ");
-    Serial.println(url);
-
-    // Read the server response (optional, helpful for debugging)
-    while (client.connected() || client.available()) {
-      if (client.available()) {
-        String line = client.readStringUntil('\n');
-        // Serial.println(line); // Uncomment to see full response
+    while (central.connected()) {
+      // If the phone has written a new value to the characteristic
+      if (switchCharacteristic.written()) {
+        if (switchCharacteristic.value()) {   
+          Serial.println("BLE Command: LED ON");
+          digitalWrite(ledPin, HIGH);         // Turn on LED
+        } else {                              
+          Serial.println("BLE Command: LED OFF");
+          digitalWrite(ledPin, LOW);          // Turn off LED
+        }
       }
     }
-    client.stop();
-    Serial.println("Request Finished.\n");
-  } else {
-    Serial.println("... Connection Failed! Check Switch IP.");
+
+    // When the phone disconnects
+    Serial.print("Disconnected from central: ");
+    Serial.println(central.address());
   }
 }
